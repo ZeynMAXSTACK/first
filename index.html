@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ua">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Audio Recorder</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      padding: 20px;
+    }
+    button {
+      margin: 10px 5px;
+      padding: 10px;
+      background-color: #007bff;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    button:active {
+      transform: scale(0.95);
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    .recording-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background-color: red;
+      border-radius: 50%;
+      animation: blink 1s infinite;
+      margin-left: 10px;
+    }
+    @keyframes blink {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0;
+      }
+    }
+    #audio-display {
+      margin-top: 20px;
+      border: 2px solid #007bff;
+      border-radius: 5px;
+      padding: 10px;
+      background-color: #fff;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Audio Recorder</h1>
+  <button type="button" id="audioButton">Get Audio list</button>
+  <button type="button" id="startButton">Start recording</button>
+  <button type="button" id="stopButton" disabled>Stop and send record</button>
+
+  <div id="recording-indicator" class="recording-indicator" style="display: none;"></div>
+  
+  <div id="audio-display">
+    <h2>Available Audio Files</h2>
+    <ul id="audio-list"></ul>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const audioButton = document.getElementById('audioButton');
+    const recordingIndicator = document.getElementById('recording-indicator');
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    const audioListElement = document.getElementById('audio-list');
+
+    let mediaRecorder;
+    let audioChunks = [];
+     
+    async function initMicrophone() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+
+      mediaRecorder.ondataavailable = event => {
+        audioChunks.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+        audioChunks = [];
+
+
+        const fileReader = new FileReader();
+        fileReader.onload = function () {
+          const arrayBuffer = this.result;
+          socket.emit('upload-audio', arrayBuffer);
+        };
+        fileReader.readAsArrayBuffer(audioBlob);
+      };
+    }
+
+
+
+    // вигруз файлів з сервера
+    function loadAudioList(fileList) {
+      try {
+        const audioListElement = document.getElementById('audio-list');
+        audioListElement.innerHTML = '';
+
+        if (!fileList || fileList.length === 0) {
+          audioListElement.innerHTML = '<li>No files available</li>';
+          return;
+        }
+
+        fileList.forEach(file => {
+          const listItem = document.createElement('li');
+          const downloadLink = document.createElement('a');
+          downloadLink.href = `/downloads/${file}`;
+          downloadLink.textContent = file;
+          downloadLink.download = file;
+
+          listItem.appendChild(downloadLink);
+          audioListElement.appendChild(listItem);
+        });
+      } catch (error) {
+        console.error('Error loading files:', error);
+        document.getElementById('audio-list').innerHTML = '<li>Error loading files</li>';
+      }
+    }
+
+    // Отримання списку файлів через сокети
+    socket.on('file-list', function(msg) {
+      console.log('Received file list:', msg);
+      loadAudioList(msg);
+    });
+
+  
+    audioButton.addEventListener('click', () => {
+      socket.emit('request-file-list');
+      console.log('Requesting audio list...');
+    });
+
+    startButton.addEventListener('click', () => {
+      mediaRecorder.start();
+      socket.emit('start');
+      console.log('Start Time: ', getTimeStamp());
+      recordingIndicator.style.display = 'inline-block';
+      stopButton.disabled = false;
+      startButton.disabled = true;
+    });
+
+    stopButton.addEventListener('click', () => {
+      mediaRecorder.stop();
+      console.log('Stop Time: ', getTimeStamp());
+      stopButton.disabled = true;
+      startButton.disabled = false;
+      recordingIndicator.style.display = 'none';
+    });
+    socket.on('file-list', fileList => {
+      audioListElement.innerHTML = '';
+      fileList.forEach(file => {
+        const listItem = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = `/files/${file}`;
+        link.textContent = file;
+        link.download = file;
+        listItem.appendChild(link);
+        audioListElement.appendChild(listItem);
+      });
+    });
+
+    // Запит на дозвіл запису звуків
+    socket.emit('request-file-list');
+
+    
+    audioButton.addEventListener('click', () => {
+      socket.emit('request-file-list');
+      console.log('Requesting audio list...');
+    });
+    
+    // Обробка списку файлів, отриманих від сервера
+    socket.on('file-list', function(fileList) {
+      console.log('Received file list:', fileList);
+      loadAudioList(fileList);
+    });
+
+
+    function getTimeStamp() {
+      return new Date().toISOString();
+    }
+    initMicrophone();
+  </script>
+</body>
+</html>
