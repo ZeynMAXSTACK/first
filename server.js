@@ -11,7 +11,6 @@ async function main() {
   const io = new Server(server);
 
   const filesDir = path.join(__dirname, 'files');
-  
 
   app.use('/files', express.static(filesDir));
 
@@ -19,16 +18,27 @@ async function main() {
     res.sendFile(join(__dirname, 'index.html'));
   });
 
-
   io.on('connection', (socket) => {
     console.log('New client connected');
 
+    socket.on('start', (data) => {
+      if (data && data.timestamp) {
+        console.log('Start event received', data.timestamp);
+      } else {
+        console.log('Start event received but no timestamp provided');
+      }
+    });
     
-    socket.on('start', () => {
-      console.log('Start event received');
+   
+    socket.on('stop', (data) => {
+      if (data && data.timestamp) {
+        console.log('Stop event received', data.timestamp);
+      } else {
+        console.log('Stop event received but no timestamp provided');
+      }
     });
 
-   
+    // Запит списку файлів
     socket.on('request-file-list', () => {
       fs.readdir(filesDir, (err, files) => {
         if (err) {
@@ -37,13 +47,12 @@ async function main() {
           return;
         }
 
-        
         const audioFiles = files.filter(file => /\.(wav)$/i.test(file));
         socket.emit('file-list', audioFiles);
       });
     });
 
-    // завантаження аудіо
+    // Завантаження аудіо
     socket.on('upload-audio', (audioBuffer) => {
       const fileName = `recording_${Date.now()}.wav`;
       const filePath = path.join(filesDir, fileName);
@@ -56,6 +65,7 @@ async function main() {
         }
 
         console.log(`File saved: ${filePath}`);
+
         // Оновлення списку файлів
         fs.readdir(filesDir, (err, files) => {
           if (err) {
@@ -63,14 +73,9 @@ async function main() {
             return;
           }
           const audioFiles = files.filter(file => /\.(mp3|wav)$/i.test(file));
-          io.emit('file-list', fs.readdirSync(filesDir).filter(file => /\.(mp3|wav)$/i.test(file)));
+          io.emit('file-list', audioFiles);
         });
       });
-    });
-
-    
-    socket.on('stop', () => {
-      console.log('Stop event received');
     });
 
     socket.on('disconnect', () => {

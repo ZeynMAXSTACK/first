@@ -128,7 +128,7 @@
         fileList.forEach(file => {
           const listItem = document.createElement('li');
           const downloadLink = document.createElement('a');
-          downloadLink.href = `/downloads/${file}`;
+          downloadLink.href = `/files/${file}`;
           downloadLink.textContent = file;
           downloadLink.download = file;
 
@@ -155,20 +155,24 @@
 
     startButton.addEventListener('click', () => {
       mediaRecorder.start();
-      socket.emit('start');
-      console.log('Start Time: ', getTimeStamp());
+      const timestamp = getTimeStamp();
+      socket.emit('start', { timestamp });
+      console.log('Start Time: ', timestamp);
       recordingIndicator.style.display = 'inline-block';
       stopButton.disabled = false;
       startButton.disabled = true;
     });
-
+    
     stopButton.addEventListener('click', () => {
       mediaRecorder.stop();
-      console.log('Stop Time: ', getTimeStamp());
+      const timestamp = getTimeStamp();
+      socket.emit('stop', { timestamp });
+      console.log('Stop Time: ', timestamp);
       stopButton.disabled = true;
       startButton.disabled = false;
       recordingIndicator.style.display = 'none';
     });
+    
     socket.on('file-list', fileList => {
       audioListElement.innerHTML = '';
       fileList.forEach(file => {
@@ -181,9 +185,6 @@
         audioListElement.appendChild(listItem);
       });
     });
-
-    // Запит на дозвіл запису звуків
-    socket.emit('request-file-list');
 
     
     audioButton.addEventListener('click', () => {
